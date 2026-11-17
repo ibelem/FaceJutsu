@@ -20,10 +20,10 @@ const kernelOf = (name) => (name.startsWith("lateral.") || name.endsWith(".down"
 
 export class WebNNSCRFD {
   // st: SafeTensors of a detector build. precision: "float16" (default; float32 when unsupported)
-  static async load(st, { precision = "float16" } = {}) {
+  static async load(st, { precision = "float16", nnDevice = "gpu" } = {}) {
     if (typeof Float16Array === "undefined") throw new Error("this browser has no Float16Array");
     const m = new WebNNSCRFD();
-    m.context = await createWebNNContext();
+    m.context = await createWebNNContext(null, nnDevice);
     m.ct = computeType(m.context, precision);
     m.convs = {};
     for (const name of convNames()) {

@@ -25,12 +25,12 @@ const N = 256; // crop px
 export class WebNNXSeg {
   // gpu: the WebGPU device (decodes the quantized weights); st: SafeTensors of an XSeg build.
   // precision: "float16" (default; float32 when unsupported)
-  static async load(gpu, st, { precision = "float16" } = {}) {
+  static async load(gpu, st, { precision = "float16", nnDevice = "gpu" } = {}) {
     if (typeof Float16Array === "undefined") throw new Error("this browser has no Float16Array");
     const m = new WebNNXSeg();
     m.gpu = gpu;
     m.st = st;
-    m.context = await createWebNNContext();
+    m.context = await createWebNNContext(null, nnDevice);
     m.ct = computeType(m.context, precision);
     m.crop = { size: N, mul: 1 / 255, add: 0 }; // as models/xseg.js
     m.graph = null;

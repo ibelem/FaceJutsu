@@ -10,9 +10,10 @@ export function hasWebNN() {
 }
 
 // device: a GPUDevice to share with WebGPU (tensors can then be lent to it, see gpuInterop), or
-// null for a context of its own
-export async function createWebNNContext(device = null) {
+// null for a context of its own. kind: "gpu" or "npu" (an NPU can't share a GPUDevice)
+export async function createWebNNContext(device = null, kind = "gpu") {
   if (!hasWebNN()) throw new Error(`WebNN is not enabled in this browser (turn on ${WEBNN_FLAG})`);
+  if (kind === "npu") return navigator.ml.createContext({ powerPreference: "default", deviceType: "npu" });
   if (device) {
     try {
       return await navigator.ml.createContext(device);

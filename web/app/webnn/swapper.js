@@ -77,12 +77,12 @@ export class WebNNSwapper {
   // gpu + weights: the WebGPU swapper's GPU and its direct (non-Winograd) weights; st: the
   // SafeTensors file (biases, f32 tensors). precision: "float16" (default; float32 when
   // unsupported). interop: share the WebGPU device when the browser allows it (forwardGPU)
-  static async load({ gpu, weights, st }, { precision = "float16", interop = false } = {}) {
+  static async load({ gpu, weights, st }, { precision = "float16", interop = false, nnDevice = "gpu" } = {}) {
     const m = new this();
     m.gpu = gpu;
     m.weights = weights;
     m.st = st;
-    m.context = await createWebNNContext(interop ? gpu.device : null);
+    m.context = await createWebNNContext(interop ? gpu.device : null, nnDevice);
     m.interop = interop && gpuInterop(m.context);
     m.ct = computeType(m.context, precision);
     m.graph = null; // { B, graph, inputs, out, sourceOf }

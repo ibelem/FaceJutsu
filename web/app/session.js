@@ -97,6 +97,7 @@ export class Session {
       name: [i.vendor, i.architecture, i.description].filter(Boolean).join(" "),
       peak: this.pipe.gpu?.pool.peak || 0,
       backend: this.pipe.selection?.backend || "webgpu",
+      webnnDevice: this.pipe.selection?.webnnDevice || "gpu",
       swapperBackend: this.pipe.selection?.swapperBackend || "webgpu",
       nnParts: this.pipe.selection?.nnParts || [],
       nnError: this.pipe.nnError || null,

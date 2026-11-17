@@ -115,8 +115,11 @@ export class SwapPipeline {
     const model = listSwappers(manifest).find((s) => s.id === (selection.model || "swapper"))?.model || "inswapper";
     const loaders = { ...LOADERS, swapper: SWAPPERS[model] };
     const backend = selection.backend === "webnn" ? "webnn" : "webgpu";
+    const nnDevice = selection.webnnDevice === "npu" ? "npu" : "gpu";
+    // how a part runs, as this.loaded tags it: a change of device loads it again
+    const tag = backend === "webnn" ? (nnDevice === "npu" ? "webnn-npu" : "webnn") : "webgpu";
     // a swapper without a WebNN graph runs on WebGPU with either backend, the enhancer always
-    const runsOn = (k) => ((k === "swapper" && !NN_SWAPPERS[model]) || partKind(k) === "enhancer" ? "webgpu" : backend);
+    const runsOn = (k) => ((k === "swapper" && !NN_SWAPPERS[model]) || partKind(k) === "enhancer" ? "webgpu" : tag);
     const winograd = selection.winograd !== false;
     const parts = Object.keys(want).filter((k) => this.loaded[k] !== loadedKey(want, k, runsOn(k), winograd));
     const files = {};
@@ -140,7 +143,7 @@ export class SwapPipeline {
       const st = new SafeTensors(files[k]);
       delete files[k]; // (it goes once this model is loaded, not after all of them)
       const progress = (f) => onStatus({ phase: "load", part: k, what: LABELS[partKind(k)], frac: f });
-      const nn = k === "swapper" && runsOn(k) === "webnn";
+      const nn = k === "swapper" && runsOn(k) !== "webgpu";
       // with WebNN, the WebGPU swapper keeps the direct weights: the WebNN graph's filters are
       // prepared from them, and they are the fallback
       this[k] = await loaders[partKind(k)].load(this.gpu, st, progress, { winograd: winograd && !nn });
@@ -148,7 +151,7 @@ export class SwapPipeline {
         const what = "face swapper (WebNN)";
         onStatus({ phase: "load", part: k, what, frac: 0 });
         try {
-          this.nn = await NN_SWAPPERS[model].load({ gpu: this.gpu, weights: this.swapper.w, st }, { interop: selection.webnnInterop === true });
+          this.nn = await NN_SWAPPERS[model].load({ gpu: this.gpu, weights: this.swapper.w, st }, { interop: selection.webnnInterop === true && nnDevice === "gpu", nnDevice });
           // build the single-face graph now, so a WebNN that can't run this model fails here
           await this.nn.ensureGraph(1, (f) => onStatus({ phase: "load", part: k, what, frac: f }));
           this.watch(this.nn.context);
@@ -166,7 +169,7 @@ export class SwapPipeline {
       if (k === "detector" && backend === "webnn") {
         // the WebGPU detector stays loaded as the fallback (8 MB)
         try {
-          this.nnDetector = await WebNNSCRFD.load(st);
+          this.nnDetector = await WebNNSCRFD.load(st, { nnDevice });
           await this.nnDetector.ensureGraph(face.DET_SIZE);
           this.watch(this.nnDetector.context);
         } catch (e) {
@@ -181,7 +184,7 @@ export class SwapPipeline {
         const what = "occlusion mask (WebNN)";
         onStatus({ phase: "load", part: k, what, frac: 0 });
         try {
-          this.nnOccluder = await WebNNXSeg.load(this.gpu, st);
+          this.nnOccluder = await WebNNXSeg.load(this.gpu, st, { nnDevice });
           await this.nnOccluder.ensureGraph((f) => onStatus({ phase: "load", part: k, what, frac: f }));
           this.watch(this.nnOccluder.context);
         } catch (e) {
@@ -191,7 +194,7 @@ export class SwapPipeline {
           this.nnOccluder = null;
         }
       }
-      const runs = (k === "swapper" && !this.nn) || (k === "detector" && !this.nnDetector) || (k === "occluder" && !this.nnOccluder) ? "webgpu" : backend;
+      const runs = (k === "swapper" && !this.nn) || (k === "detector" && !this.nnDetector) || (k === "occluder" && !this.nnOccluder) ? "webgpu" : tag;
       this.loaded[k] = loadedKey(want, k, runs, winograd);
     }
     // the swapper's styles depend on its weights
@@ -199,7 +202,7 @@ export class SwapPipeline {
     await this.gpu.sync();
     // nnParts: what runs through WebNN
     const nnParts = [this.nn && "face swapper", this.nnDetector && "face detector", this.nnOccluder && "occlusion mask"].filter(Boolean);
-    this.selection = { ...selection, backend: nnParts.length ? "webnn" : "webgpu", swapperBackend: this.nn ? "webnn" : "webgpu", nnParts };
+    this.selection = { ...selection, backend: nnParts.length ? "webnn" : "webgpu", webnnDevice: nnDevice, swapperBackend: this.nn ? "webnn" : "webgpu", nnParts };
     onStatus({ phase: "ready" });
   }
 

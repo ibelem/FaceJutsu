@@ -28,8 +28,11 @@ const BUILDS = { swapper: "int8", recognizer: "int8", enhancer: ["int8", "f16"],
 const COLORS = ["#5aa9ff", "#ffb547", "#3ddc97", "#ff7eb6", "#a78bfa", "#2fd3d0", "#ff9a4d", "#c2e34a"];
 const BACKENDS = [
   { id: "webgpu", label: "WebGPU", tip: "Works in any WebGPU browser" },
-  { id: "webnn", label: "WebNN (faster)", tip: "Runs the face swapper through the browser's ML API on fp16 tensor cores" },
+  { id: "webnn", label: "WebNN GPU", tip: "Runs the face swapper through the browser's ML API on the graphics card's fp16 tensor cores (high-performance GPU)" },
+  { id: "webnn-npu", label: "WebNN NPU", tip: "Runs the face swapper through the browser's ML API on the NPU, when the computer has one" },
 ];
+// what the engine is told for an engine choice ("webnn" is the GPU one, as earlier versions saved it)
+const backendSelection = () => ({ backend: ui.backend === "webgpu" ? "webgpu" : "webnn", webnnDevice: ui.backend === "webnn-npu" ? "npu" : "gpu" });
 // pixelshuffle: the swapper works on crops of its own size (128 px); larger crops are split
 // into sub-images of that size. With several picked (Ctrl / Shift click), each face gets the
 // one of them its size in the frame needs (pipeline.js autoPixelshuffle)
@@ -111,7 +114,7 @@ for (const k of ["outFormat", "outCodec", "outSize", "outAudio", "photoFormat", 
 // and swapping the rest); off, only the frames around the playhead and a skim of the video, to
 // keep the load low. (Earlier versions kept a mode name here: off now, as by default.)
 if (typeof ui.auto !== "boolean") ui.auto = false;
-if (ui.backend === "webnn" && !hasWebNN()) ui.backend = "webgpu";
+if (!BACKENDS.some((b) => b.id === ui.backend) || (ui.backend !== "webgpu" && !hasWebNN())) ui.backend = "webgpu";
 const saveUi = () => store.set("ui", ui);
 
 let manifest = null;
@@ -3177,7 +3180,7 @@ async function loadModels() {
   render();
   try {
     if (engine.lost) await restartEngine();
-    await engine.load(BASE, manifest, { ...selection(), backend: ui.backend, winograd: params.get("winograd") !== "0" }, {
+    await engine.load(BASE, manifest, { ...selection(), ...backendSelection(), winograd: params.get("winograd") !== "0" }, {
       signal: ac.signal,
       onStatus: (s) => {
         if (s.phase === "load") {
@@ -3193,8 +3196,8 @@ async function loadModels() {
     have = {};
     modelSkip = "";
     modelState = {};
-    if (ui.backend === "webnn" && engine.gpu.backend !== "webnn") {
-      showError(`WebNN couldn't start, so the WebGPU engine is used instead: ${engine.gpu.nnError || "unknown error"}`);
+    if (ui.backend !== "webgpu" && engine.gpu.backend !== "webnn") {
+      showError(`${ui.backend === "webnn-npu" ? "WebNN on the NPU" : "WebNN"} couldn't start, so the WebGPU engine is used instead: ${engine.gpu.nnError || "unknown error"}`);
     }
     // characters saved on earlier visits, or made before the models were removed, go to the engine now
     for (const c of characters.filter((x) => !x.loaded)) await loadCharacter(c);
@@ -3239,7 +3242,7 @@ async function loadInline(parts, key) {
   renderModels();
   renderSteps();
   try {
-    await engine.load(BASE, manifest, { ...selection(parts), backend: ui.backend, winograd: params.get("winograd") !== "0" }, {
+    await engine.load(BASE, manifest, { ...selection(parts), ...backendSelection(), winograd: params.get("winograd") !== "0" }, {
       signal: ac.signal,
       onStatus: (s) => {
         const k = s.part?.split(":")[0];
@@ -3531,14 +3534,14 @@ function renderBackend() {
       renderBackend();
       if (ready) { $("setPop").hidePopover(); await loadModels(); }
     };
-    if (b.id === "webnn" && !nn) unavailable(btn, webnnHelp(), WEBNN_FLAG_URL);
+    if (b.id !== "webgpu" && !nn) unavailable(btn, webnnHelp(), WEBNN_FLAG_URL);
     el.append(btn);
   }
   placeThumb(el);
   segThumbs.observe(el);
   const g = engine?.gpu || {};
-  const running = !ready ? "" : g.backend !== "webnn" ? "WebGPU" : `WebNN ${g.nnParts.join(", ").replace(/, ([^,]*)$/, " and $1")}, WebGPU for the rest`;
-  const help = nn ? "WebNN runs the face swapper (most of the work) on your graphics card's fp16 tensor cores: several times faster. It is experimental: if it fails to start, the WebGPU engine takes over. Switching loads the models again."
+  const running = !ready ? "" : g.backend !== "webnn" ? "WebGPU" : `WebNN ${g.webnnDevice === "npu" ? "NPU" : "GPU"}: ${g.nnParts.join(", ").replace(/, ([^,]*)$/, " and $1")}, WebGPU for the rest`;
+  const help = nn ? "WebNN runs the face swapper (most of the work) on your graphics card's fp16 tensor cores (WebNN GPU) or on the NPU (WebNN NPU): several times faster on most graphics cards. It is experimental: if it fails to start (an NPU may not run every model), the WebGPU engine takes over. Switching loads the models again."
     : `${webnnHelp()} It is several times faster on most graphics cards.`;
   const info = running && `Running: ${running}${engine?.inWorker ? " (in a worker)" : ""}${g.name ? ` · ${g.name}` : ""}${g.peak ? ` · peak working memory ${fmtSize(g.peak)}` : ""}`;
   $("backendRow").title = [help, info].filter(Boolean).join("\n\n");
