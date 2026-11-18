@@ -1351,7 +1351,9 @@ function renderPerf() {
     const { backend, build, dispatch: d } = perf[k];
     const on = backend === "webnn" ? `WebNN ${g.webnnDevice === "npu" ? "NPU" : "GPU"}` : "WebGPU";
     const steady = d && d.n > 1 ? fmtMs((d.sum - d.first) / (d.n - 1)) : "–";
-    cells.push(cell(PERF_NAMES[k], "perf-name", `${PERF_NAMES[k]}: runs on ${on}`));
+    const name = cell(PERF_NAMES[k], "perf-name", `${PERF_NAMES[k]}: runs on ${on}`);
+    name.append(cell(on, "perf-on"));
+    cells.push(name);
     if (compile) cells.push(cell(build ? fmtMs(build.last) : "–", "perf-num", build ? (build.n > 1 ? `${build.n} graphs built, ${fmtMs(build.sum)} in all` : PERF_TIPS.compile) : PERF_TIPS.compile));
     cells.push(
       cell(d ? fmtMs(d.first) : "–", "perf-num", PERF_TIPS.first),

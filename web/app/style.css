@@ -852,7 +852,8 @@ kbd {
 .opt-row output { font: 500 var(--fs-caption) var(--font-mono); color: var(--fg); min-width: 36px; text-align: right; }
 .opt-row .sw-cap { min-width: 0; font-size: var(--fs-caption); color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .perf { display: grid; grid-template-columns: repeat(var(--perf-cols, 3), minmax(0, 1fr)); gap: var(--s4) var(--s8); align-items: baseline; font-size: var(--fs-small); color: var(--muted); }
-.perf-name { grid-column: 1 / -1; margin-top: var(--s4); }
+.perf-name { grid-column: 1 / -1; margin-top: var(--s4); display: flex; justify-content: space-between; gap: var(--s8); }
+.perf-on { font-size: var(--fs-caption); color: var(--faint); white-space: nowrap; }
 .perf-head { font-size: var(--fs-caption); color: var(--faint); text-align: right; white-space: nowrap; }
 .perf-num { font: 500 var(--fs-caption) var(--font-mono); color: var(--fg); text-align: right; cursor: help; }
 
