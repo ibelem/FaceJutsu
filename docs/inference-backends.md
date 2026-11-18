@@ -51,7 +51,7 @@ WebNN may be faster on hardware where it reaches an NPU or a vendor-tuned GPU pa
 
 ## Performance step
 
-Settings has a **4 Performance** step under Mask. It appears once models are loaded and lists each timed model with three numbers. Each title and number has a hover tooltip.
+Settings has a **1 Performance** step above Swap. It appears once models are loaded and lists each timed model with three numbers. Each title and number has a hover tooltip.
 
 | Column | Meaning |
 | --- | --- |

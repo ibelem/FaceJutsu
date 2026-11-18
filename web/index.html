@@ -241,15 +241,23 @@
         <p class="help" id="charsHelp" hidden></p>
       </section>
 
+      <section class="step" data-step="perf" id="perfStep" hidden>
+        <button type="button" class="step-head" aria-expanded="true"><span class="step-title"><i class="seal">1</i>Performance</span><span class="step-sum"></span></button>
+        <div class="step-body">
+          <div class="perf" id="perfRows"></div>
+          <p class="help">Hover a title or a number to see what it measures. Timed through the read back of each result. The WebGPU swapper, enhancer and occlusion mask stay queued on the GPU, so they can't be timed one by one.</p>
+        </div>
+      </section>
+
       <section class="step" data-step="swap">
-        <button type="button" class="step-head" aria-expanded="true"><span class="step-title"><i class="seal">1</i>Swap</span><span class="step-sum"></span></button><button type="button" class="step-load" data-part="swapper" hidden></button>
+        <button type="button" class="step-head" aria-expanded="true"><span class="step-title"><i class="seal">2</i>Swap</span><span class="step-sum"></span></button><button type="button" class="step-load" data-part="swapper" hidden></button>
         <div class="step-body">
           <div class="opt-row"><span class="hint" title="Higher is sharper but slower.&#10;Ctrl-click to pick several: each face gets the one that suits its size.">Detail</span><div class="seg" id="detailSeg" role="group" aria-label="Swap resolution"></div></div>
         </div>
       </section>
 
       <section class="step" data-step="enhance" id="enhanceStep" hidden>
-        <button type="button" class="step-head" aria-expanded="true"><span class="step-title"><i class="seal">2</i>Enhance</span><span class="step-sum"></span></button><button type="button" class="step-load" data-part="enhancer" hidden></button>
+        <button type="button" class="step-head" aria-expanded="true"><span class="step-title"><i class="seal">3</i>Enhance</span><span class="step-sum"></span></button><button type="button" class="step-load" data-part="enhancer" hidden></button>
         <div class="step-body">
           <div class="opt-row" id="enhanceRow"><span>Quality</span><div class="seg" id="enhanceSeg" role="radiogroup" aria-label="Enhance quality"></div></div>
           <div class="opt-row" id="enhanceModeRow" hidden><span class="hint" title="Subtle only adds fine detail.&#10;Strong redraws the whole face.">Style</span><div class="seg" id="enhanceModeSeg" role="radiogroup" aria-label="What the enhancer may change"></div></div>
@@ -258,19 +266,11 @@
       </section>
 
       <section class="step" data-step="mask">
-        <button type="button" class="step-head" aria-expanded="true"><span class="step-title"><i class="seal">3</i>Mask</span><span class="step-sum"></span></button><button type="button" class="step-load" data-part="occluder" hidden></button>
+        <button type="button" class="step-head" aria-expanded="true"><span class="step-title"><i class="seal">4</i>Mask</span><span class="step-sum"></span></button><button type="button" class="step-load" data-part="occluder" hidden></button>
         <div class="step-body">
           <label class="opt-row"><span class="hint" title="How softly the swapped face blends in.">Edges</span><input type="range" id="blurRange" min="0" max="1" step="0.05" aria-label="Edge softness"><output id="blurOut"></output></label>
           <div class="opt-row" id="occlusionRow" hidden><span>Objects</span><span class="sw-cap">Hands and glasses stay in front</span><div class="switch-box" id="occlusionSeg"></div></div>
           <label class="opt-row" id="maskSizeRow" hidden><span class="hint" title="How much of the face gets swapped around what's in front of it. To the right the swap reaches closer to it, to the left more of the original stays around it.">Coverage</span><input type="range" class="centered" id="maskSizeRange" min="-1" max="1" step="0.05" aria-label="Coverage"><output id="maskSizeOut"></output></label>
-        </div>
-      </section>
-
-      <section class="step" data-step="perf" id="perfStep" hidden>
-        <button type="button" class="step-head" aria-expanded="true"><span class="step-title"><i class="seal">4</i>Performance</span><span class="step-sum"></span></button>
-        <div class="step-body">
-          <div class="perf" id="perfRows"></div>
-          <p class="help">Hover a title or a number to see what it measures. Timed through the read back of each result. The WebGPU swapper, enhancer and occlusion mask stay queued on the GPU, so they can't be timed one by one.</p>
         </div>
       </section>
 
