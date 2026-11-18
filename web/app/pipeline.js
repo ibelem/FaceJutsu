@@ -93,8 +93,9 @@ export class SwapPipeline {
     this.source = null; // the default identity (setSource)
     this.sources = new Set(); // every identity made by createSource: { embedding, latent, styles, stylesData }
     this.contexts = new Set(); // the WebNN contexts in use, whose loss is reported
-    // timings of the WebGPU models that are read back after each run (support.js track)
-    this.wgpuPerf = { detector: {}, recognizer: {} };
+    // timings of the WebGPU models (support.js track), and how many runs each has had (gpuRun)
+    this.wgpuPerf = { detector: {}, recognizer: {}, swapper: {}, occluder: {}, enhancer: {} };
+    this.wgpuRuns = {};
   }
 
   // Reads the selected files from the models folder and loads them; components already on the GPU
@@ -209,14 +210,14 @@ export class SwapPipeline {
     onStatus({ phase: "ready" });
   }
 
-  // The timings (ms) of the models run so far: { swapper, detector, recognizer, occluder } ->
+  // The timings (ms) of the models run so far: { detector, recognizer, swapper, occluder, enhancer } ->
   // { backend, build?, dispatch: { first, last, sum, n } }. The WebNN models are timed from their
-  // graph's build and each dispatch to the read back of its result; of the WebGPU models only the
-  // detector and the recognizer, which are read back after every run (the others stay queued on the GPU).
+  // graph's build and each dispatch to the read back of its result; the detector and the recognizer
+  // on WebGPU the same, the others (queued on the GPU) by gpuRun, from some of their runs.
   get perf() {
     const nn = { swapper: this.nn, detector: this.nnDetector, occluder: this.nnOccluder };
     const out = {};
-    for (const k of ["swapper", "detector", "recognizer", "occluder"]) {
+    for (const k of ["detector", "recognizer", "swapper", "occluder", "enhancer"]) {
       const p = nn[k] ? nn[k].perf : this.wgpuPerf[k];
       if (p && Object.keys(p).length) out[k] = { ...p, backend: nn[k] ? "webnn" : "webgpu" };
     }
@@ -259,7 +260,23 @@ export class SwapPipeline {
     }
     this[k] = null;
     delete this.loaded[k];
-    if (this.wgpuPerf[k]) this.wgpuPerf[k] = {};
+    const kind = partKind(k);
+    if (this.wgpuPerf[kind]) this.wgpuPerf[kind] = {};
+    delete this.wgpuRuns[kind];
+  }
+
+  // Runs fn (a model's forward, queued on the GPU) and times it until the GPU has finished it,
+  // alone: the work before it is waited for first. That stalls the queue, so only the first runs
+  // and every 8th after them are timed.
+  async gpuRun(kind, fn) {
+    const n = (this.wgpuRuns[kind] = (this.wgpuRuns[kind] || 0) + 1);
+    if (n > 3 && n % 8) return fn();
+    await this.gpu.sync();
+    return track(this.wgpuPerf[kind], "dispatch", async () => {
+      const out = fn();
+      await this.gpu.sync();
+      return out;
+    });
   }
 
   // ------------------------------------------------------------------ frames
@@ -498,7 +515,7 @@ export class SwapPipeline {
       const n = Math.min(OCCLUDER_BATCH, faces.length - i);
       const x = gpu.empty([n, N, N, 3]);
       for (let j = 0; j < n; j++) ops.resample(gpu, frame, { ow: N, oh: N, m: face.invert(maps[i + j]), mul, add, out: x, offset: j * N * N * 3 });
-      const y = this.nnOccluder ? await this.nnOccluder.forward(x) : this.occluder.forward(x);
+      const y = this.nnOccluder ? await this.nnOccluder.forward(x) : await this.gpuRun("occluder", () => this.occluder.forward(x));
       x.release();
       parts.push(this.occlusionPost(y, blur, maskSize));
       y.release();
@@ -570,12 +587,12 @@ export class SwapPipeline {
         // WebNN: the crops go through the CPU (192 KB per 128 px crop, each way)
         const out = await this.nn.forward(await this.gpu.read(x), x.shape[0], src.stylesData);
         y = this.gpu.fromArray(out, x.shape);
-      } else y = this.swapper.forward(x, src.styles);
+      } else y = await this.gpuRun("swapper", () => this.swapper.forward(x, src.styles));
       x.release();
       ops.paste(this.gpu, frame, y, this.maskProfile(size, blur), m, face.pasteBox(m, size, frame.w, frame.h), size, pixelshuffle);
       y.release();
     }
-    if (enh) this.enhanceFaces(frame, faces, { ...enhance, model: enh.part.slice(9), blur, pixelshuffle });
+    if (enh) await this.enhanceFaces(frame, faces, { ...enhance, model: enh.part.slice(9), blur, pixelshuffle });
     if (orig) await this.unoccludeFaces(frame, orig, faces, { template, blur, maskSize });
   }
 
@@ -658,7 +675,7 @@ export class SwapPipeline {
   // enhancer's output, lp the part below the swap's detail (down to it and back), so the result
   // downsamples back to the swap exactly. It is pasted as a change, out - C, so what the frame
   // has above the enhancer's resolution (a face larger than its crop) stays.
-  enhanceFaces(frame, faces, { model, blend = 0.8, blur = 0.3, detail = true, pixelshuffle = 1 } = {}) {
+  async enhanceFaces(frame, faces, { model, blend = 0.8, blur = 0.3, detail = true, pixelshuffle = 1 } = {}) {
     const gpu = this.gpu;
     const { net, info } = this.enhancerFor({ model });
     const { size: N, template } = info;
@@ -667,7 +684,7 @@ export class SwapPipeline {
       const lo = detail ? this.enhancerBand(this.swapDetail(pixelshuffle, f.detail), info) : 0;
       const m = face.alignment(f.kps, face.TEMPLATES[template], N);
       const x = ops.resample(gpu, frame, { ow: N, oh: N, m: face.invert(m), mul, add });
-      const g = net.forward(x);
+      const g = await this.gpuRun("enhancer", () => net.forward(x));
       const band = detail ? ops.bandDown(gpu, x, g, lo) : null;
       const y = ops.enhanceOut(gpu, g, band, x);
       x.release();

@@ -51,11 +51,11 @@ WebNN may be faster on hardware where it reaches an NPU or a vendor-tuned GPU pa
 
 ## Performance step
 
-Settings has a **1 Performance** step above Swap. It appears once models are loaded and lists each timed model with three numbers. Each title and number has a hover tooltip.
+Settings has a **1 Performance** step above Swap. It appears once models are loaded and lists each timed model with up to three numbers. Each title and number has a hover tooltip. Models are named by role and model, e.g. "face detector (scrfd)".
 
 | Column | Meaning |
 | --- | --- |
-| Compile | WebNN only: building the model's graph and handing it to the platform's ML runtime. For the swapper this includes decoding its weights on the GPU. WebGPU shows "–": it compiles its shaders on first use, which is part of First run. |
+| Compile | WebNN only: building the model's graph and handing it to the platform's ML runtime. For the swapper this includes decoding its weights on the GPU. WebGPU has no such step (it compiles its shaders on first use, which is part of First run), so the column is left out while no model has one. |
 | First run | Time to first inference: the first run after the model loaded, until its result is read back. Besides the inference it holds one-time costs: shader and pipeline compiling (WebGPU), buffer allocation and driver warm-up. A shader cache can make it much shorter on a later visit. |
 | Steady | Inference time once warmed up: the average of every run after the first, until the result is read back. This is what each frame costs. It shows "–" until there are two runs. |
 
@@ -64,8 +64,8 @@ Hovering a model's name shows the backend it runs on (WebGPU, WebNN GPU or WebNN
 ### Which models are timed
 
 - WebNN: the swapper, the detector and the occlusion mask, when they run through WebNN.
-- WebGPU: only the detector and the recognizer. Both are read back after every run, so they can be timed without slowing the pipeline.
-- Not timed: the WebGPU swapper, enhancer and occlusion mask. They stay queued on the GPU with no read-back, so a wall-clock time would measure recording the work, not running it. Timing them one by one would need timestamp queries (the `profile` option of [device.js](../web/app/gpu/device.js)) or a synchronisation after each model, which slows the pipeline.
+- WebGPU: the detector and the recognizer, which are read back after every run, so every run is timed.
+- WebGPU swapper, enhancer and occlusion mask: they stay queued on the GPU with no read-back, so a wall-clock time would measure recording the work, not running it. Instead `gpuRun` in [pipeline.js](../web/app/pipeline.js) waits for the work before a run, then for the run itself. That stalls the queue, so only the first three runs and every 8th after them are timed.
 
 ### How it is measured
 
