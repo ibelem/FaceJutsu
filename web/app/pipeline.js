@@ -218,7 +218,7 @@ export class SwapPipeline {
     const nn = { swapper: this.nn, detector: this.nnDetector, occluder: this.nnOccluder };
     const out = {};
     for (const k of ["detector", "recognizer", "swapper", "occluder", "enhancer"]) {
-      const p = nn[k] ? nn[k].perf : this.wgpuPerf[k];
+      const p = (nn[k] || this.wgpuPerf[k]).perf;
       if (p && Object.keys(p).length) out[k] = { ...p, backend: nn[k] ? "webnn" : "webgpu" };
     }
     return out;

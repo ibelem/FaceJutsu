@@ -1335,7 +1335,6 @@ function renderPerf() {
   const step = $("perfStep");
   step.hidden = !keys.length;
   if (!keys.length) return;
-  step.querySelector(".step-sum").textContent = g.backend === "webnn" ? `WebNN ${g.webnnDevice === "npu" ? "NPU" : "GPU"}` : "WebGPU";
   const cell = (text, cls, title) => {
     const el = document.createElement("span");
     el.className = cls;
