@@ -100,7 +100,7 @@ export class Session {
       webnnDevice: this.pipe.selection?.webnnDevice || "gpu",
       swapperBackend: this.pipe.selection?.swapperBackend || "webgpu",
       nnParts: this.pipe.selection?.nnParts || [],
-      nnPerf: this.pipe.nnPerf,
+      perf: this.pipe.perf,
       nnError: this.pipe.nnError || null,
     };
   }

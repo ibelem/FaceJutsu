@@ -48,13 +48,14 @@ export async function timed(m, model, what, fn) {
   }
 }
 
-// Runs fn and records how long it took in m.perf[key]: { last, sum, n } (ms). Not for failures.
+// Runs fn and records how long it took in m.perf[key]: { first, last, sum, n } (ms). Not for failures.
 export async function track(m, key, fn) {
   const t0 = performance.now();
   const r = await fn();
   const ms = performance.now() - t0;
   const s = ((m.perf ||= {})[key] ||= { last: 0, sum: 0, n: 0 });
   s.last = ms;
+  if (!s.n) s.first = ms;
   s.sum += ms;
   s.n++;
   return r;

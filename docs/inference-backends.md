@@ -48,3 +48,36 @@ Decoding, encoding and muxing use [Mediabunny](../web/app/vendor/mediabunny.min.
 ## Speed
 
 WebNN may be faster on hardware where it reaches an NPU or a vendor-tuned GPU path. The speed difference has not been measured here.
+
+## Performance step
+
+Settings has a **4 Performance** step under Mask. It appears once models are loaded and lists each timed model with three numbers. Each title and number has a hover tooltip.
+
+| Column | Meaning |
+| --- | --- |
+| Compile | WebNN only: building the model's graph and handing it to the platform's ML runtime. For the swapper this includes decoding its weights on the GPU. WebGPU shows "–": it compiles its shaders on first use, which is part of First run. |
+| First run | Time to first inference: the first run after the model loaded, until its result is read back. Besides the inference it holds one-time costs: shader and pipeline compiling (WebGPU), buffer allocation and driver warm-up. A shader cache can make it much shorter on a later visit. |
+| Steady | Inference time once warmed up: the average of every run after the first, until the result is read back. This is what each frame costs. It shows "–" until there are two runs. |
+
+Hovering a model's name shows the backend it runs on (WebGPU, WebNN GPU or WebNN NPU).
+
+### Which models are timed
+
+- WebNN: the swapper, the detector and the occlusion mask, when they run through WebNN.
+- WebGPU: only the detector and the recognizer. Both are read back after every run, so they can be timed without slowing the pipeline.
+- Not timed: the WebGPU swapper, enhancer and occlusion mask. They stay queued on the GPU with no read-back, so a wall-clock time would measure recording the work, not running it. Timing them one by one would need timestamp queries (the `profile` option of [device.js](../web/app/gpu/device.js)) or a synchronisation after each model, which slows the pipeline.
+
+### How it is measured
+
+- `track()` in [support.js](../web/app/webnn/support.js) times a function and records `{ first, last, sum, n }` in milliseconds. First run is `first`, and Steady is `(sum - first) / (n - 1)`.
+- WebNN: graph builds are timed in `ensureGraph()` of each model, and each dispatch is timed from `dispatch` to the read-back of its result (`once()` in `support.js`). The first dispatch and each build are also logged to the console as `[WebNN npu] inswapper: build graph (batch 1) start` / `done in N ms`, per model and device.
+- WebGPU: the detector's and the recognizer's run, through the read-back, are timed in `detect()` and `embed()` of [pipeline.js](../web/app/pipeline.js). The detector's and recognizer's first run is the warm-up on a blank frame made after loading ([session.js](../web/app/session.js)).
+- The timings are collected in `SwapPipeline.perf`, sent to the page with the engine's GPU info (`gpuInfo.perf`) and drawn by `renderPerf()` in [main.js](../web/app/main.js). The page refreshes them when the engine replies to a call, so during a long export they update when that call finishes.
+- Reloading a model, or switching engine, resets its timings.
+
+### Caveats
+
+- Time to first inference is a proxy for compile time, not a pure measure of it. It also includes allocation and warm-up, and it depends on whether the shader cache is cold or warm.
+- Compare WebNN's Compile plus First run with WebGPU's First run, not Compile alone with First run.
+- The WebGPU numbers include any queued work the read-back had to wait for, such as the frame upload and the resample before the model.
+- The WebNN/WebGPU interop path (`webnnInterop`, off by default) is not timed.

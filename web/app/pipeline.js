@@ -16,6 +16,7 @@ import { WebNNSCRFD } from "./webnn/scrfd.js";
 import { WebNNXSeg } from "./webnn/xseg.js";
 import * as face from "./face.js";
 import { readModel, untilBack } from "./workspace.js";
+import { track } from "./webnn/support.js";
 
 export async function fetchManifest(baseUrl) {
   const res = await fetch(new URL("manifest.json", baseUrl), { cache: "no-cache" });
@@ -92,6 +93,8 @@ export class SwapPipeline {
     this.source = null; // the default identity (setSource)
     this.sources = new Set(); // every identity made by createSource: { embedding, latent, styles, stylesData }
     this.contexts = new Set(); // the WebNN contexts in use, whose loss is reported
+    // timings of the WebGPU models that are read back after each run (support.js track)
+    this.wgpuPerf = { detector: {}, recognizer: {} };
   }
 
   // Reads the selected files from the models folder and loads them; components already on the GPU
@@ -206,11 +209,17 @@ export class SwapPipeline {
     onStatus({ phase: "ready" });
   }
 
-  // The timings (ms; webnn/support.js track) of the WebNN models: { swapper, detector, occluder }
-  // -> { build, dispatch: { last, sum, n } }, for those running through WebNN
-  get nnPerf() {
+  // The timings (ms) of the models run so far: { swapper, detector, recognizer, occluder } ->
+  // { backend, build?, dispatch: { first, last, sum, n } }. The WebNN models are timed from their
+  // graph's build and each dispatch to the read back of its result; of the WebGPU models only the
+  // detector and the recognizer, which are read back after every run (the others stay queued on the GPU).
+  get perf() {
+    const nn = { swapper: this.nn, detector: this.nnDetector, occluder: this.nnOccluder };
     const out = {};
-    for (const [k, m] of [["swapper", this.nn], ["detector", this.nnDetector], ["occluder", this.nnOccluder]]) if (m?.perf) out[k] = m.perf;
+    for (const k of ["swapper", "detector", "recognizer", "occluder"]) {
+      const p = nn[k] ? nn[k].perf : this.wgpuPerf[k];
+      if (p && Object.keys(p).length) out[k] = { ...p, backend: nn[k] ? "webnn" : "webgpu" };
+    }
     return out;
   }
 
@@ -250,6 +259,7 @@ export class SwapPipeline {
     }
     this[k] = null;
     delete this.loaded[k];
+    if (this.wgpuPerf[k]) this.wgpuPerf[k] = {};
   }
 
   // ------------------------------------------------------------------ frames
@@ -357,10 +367,13 @@ export class SwapPipeline {
       data = await this.nnDetector.forward(input, size);
       x.release();
     } else {
-      const outs = this.detector.forward(x);
-      x.release();
-      data = await Promise.all(outs.map((o) => this.gpu.read(o)));
-      for (const o of outs) o.release();
+      data = await track(this.wgpuPerf.detector, "dispatch", async () => {
+        const outs = this.detector.forward(x);
+        x.release();
+        const d = await Promise.all(outs.map((o) => this.gpu.read(o)));
+        for (const o of outs) o.release();
+        return d;
+      });
     }
     return face.decodeDetections(data, scale, { ...opts, size });
   }
@@ -386,11 +399,13 @@ export class SwapPipeline {
 
   async embed(frame, kps) {
     const x = this.embedInput(frame, kps);
-    const e = this.recognizer.forward(x);
-    x.release();
-    const out = await this.gpu.read(e);
-    e.release();
-    return out;
+    return track(this.wgpuPerf.recognizer, "dispatch", async () => {
+      const e = this.recognizer.forward(x);
+      x.release();
+      const out = await this.gpu.read(e);
+      e.release();
+      return out;
+    });
   }
 
   // An identity to swap in (an ArcFace embedding of a source face). A face of swapFaces takes

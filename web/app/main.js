@@ -1318,35 +1318,44 @@ function renderSteps() {
   renderPerf();
 }
 
-const PERF_NAMES = { swapper: "Swapper", detector: "Detector", occluder: "Mask" };
+const PERF_NAMES = { swapper: "Swapper", detector: "Detector", recognizer: "Recognizer", occluder: "Mask" };
 const fmtMs = (ms) => (ms < 1000 ? `${ms.toFixed(ms < 10 ? 1 : 0)} ms` : `${(ms / 1000).toFixed(1)} s`);
+const PERF_TIPS = {
+  compile: "Compilation. WebNN: building the model's graph and handing it to the platform's ML runtime, including decoding its weights. WebGPU has no separate step: it compiles its shaders on first use, which is part of First run.",
+  first: "Time to first inference: the first run after the model loaded, until its result was read back. Besides the inference it holds one-time costs: shader and pipeline compiling (WebGPU), allocating buffers, driver warm-up. A shader cache can make it much shorter on a later visit.",
+  steady: "Inference time once warmed up: the average of every run after the first, until its result was read back. This is what each frame costs.",
+};
 
-// The Performance step: how long each WebNN model took to build its graph, and to run one
-// dispatch through the read back of its result. Only while models run through WebNN.
+// The Performance step: per model, its compile time (WebNN's graph build), the time to its first
+// inference and the average of those after it, each until the result is read back.
 function renderPerf() {
   const g = engine?.gpu || {};
-  const perf = ready && g.backend === "webnn" ? g.nnPerf || {} : {};
+  const perf = ready ? g.perf || {} : {};
   const keys = Object.keys(PERF_NAMES).filter((k) => perf[k]);
   const step = $("perfStep");
   step.hidden = !keys.length;
   if (!keys.length) return;
-  step.querySelector(".step-sum").textContent = `WebNN ${g.webnnDevice === "npu" ? "NPU" : "GPU"}`;
-  $("perfRows").replaceChildren(...keys.map((k) => {
-    const { build, dispatch } = perf[k];
-    const row = document.createElement("div");
-    row.className = "opt-row";
-    const name = document.createElement("span");
-    name.textContent = PERF_NAMES[k];
-    const built = document.createElement("span");
-    built.className = "sw-cap";
-    built.textContent = build ? `Build ${fmtMs(build.last)}` : "";
-    if (build?.n > 1) built.title = `${build.n} graphs built, ${fmtMs(build.sum)} in all`;
-    const run = document.createElement("output");
-    run.textContent = dispatch ? `Run ${fmtMs(dispatch.last)} · avg ${fmtMs(dispatch.sum / dispatch.n)}` : "Run –";
-    if (dispatch) run.title = `${dispatch.n} dispatches`;
-    row.append(name, built, run);
-    return row;
-  }));
+  step.querySelector(".step-sum").textContent = g.backend === "webnn" ? `WebNN ${g.webnnDevice === "npu" ? "NPU" : "GPU"}` : "WebGPU";
+  const cell = (text, cls, title) => {
+    const el = document.createElement("span");
+    el.className = cls;
+    el.textContent = text;
+    if (title) el.title = title;
+    return el;
+  };
+  const cells = [cell("", "perf-head"), cell("Compile", "perf-head hint", PERF_TIPS.compile), cell("First run", "perf-head hint", PERF_TIPS.first), cell("Steady", "perf-head hint", PERF_TIPS.steady)];
+  for (const k of keys) {
+    const { backend, build, dispatch: d } = perf[k];
+    const on = backend === "webnn" ? `WebNN ${g.webnnDevice === "npu" ? "NPU" : "GPU"}` : "WebGPU";
+    const steady = d && d.n > 1 ? fmtMs((d.sum - d.first) / (d.n - 1)) : "–";
+    cells.push(
+      cell(PERF_NAMES[k], "perf-name", `${PERF_NAMES[k]}: runs on ${on}`),
+      cell(build ? fmtMs(build.last) : "–", "perf-num", build ? (build.n > 1 ? `${build.n} graphs built, ${fmtMs(build.sum)} in all` : PERF_TIPS.compile) : PERF_TIPS.compile),
+      cell(d ? fmtMs(d.first) : "–", "perf-num", PERF_TIPS.first),
+      cell(steady, "perf-num", d ? `${PERF_TIPS.steady} (${d.n - 1} runs after the first)` : PERF_TIPS.steady),
+    );
+  }
+  $("perfRows").replaceChildren(...cells);
 }
 
 // the timeline's tracks: one per person found, or the clip's progress while faces are being found
