@@ -11,7 +11,8 @@ const aborts = new Map();
 
 async function handle(msg) {
   const { id, type } = msg;
-  const reply = (m, transfer = []) => self.postMessage({ id, ...m }, transfer);
+  // every result carries the GPU info, so the timings show as soon as there are any
+  const reply = (m, transfer = []) => self.postMessage({ id, ...(m.type === "result" && session ? { gpu: session.gpuInfo } : null), ...m }, transfer);
   // (a scan's update brings the new thumbnails along)
   const progress = (p) => reply({ type: "progress", progress: p }, (p.scan?.thumbs || []).map(([, b]) => b));
   if (type === "init") {
@@ -28,7 +29,7 @@ async function handle(msg) {
     session = session || new Session({ onLost: (e) => self.postMessage({ type: "lost", ...e }) });
     if (type === "load") {
       await session.load(new URL(msg.base), msg.manifest, msg.selection, { signal: ac.signal, onStatus: (s) => reply({ type: "status", status: s }) });
-      reply({ type: "result", gpu: session.gpuInfo });
+      reply({ type: "result" });
     } else if (type === "embedImage") {
       reply({ type: "result", ...(await session.embedImage(msg.bitmap)) });
     } else if (type === "setCharacter") {
@@ -63,7 +64,7 @@ async function handle(msg) {
         onProgress: progress,
         onPreview: (bitmap) => reply({ type: "preview", bitmap }, [bitmap]),
       });
-      reply({ type: "result", ...r, gpu: session.gpuInfo });
+      reply({ type: "result", ...r });
     }
   } catch (e) {
     reply({ type: "error", name: e.name, message: e.message, stack: e.stack });
