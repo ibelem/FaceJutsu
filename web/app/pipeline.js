@@ -206,6 +206,14 @@ export class SwapPipeline {
     onStatus({ phase: "ready" });
   }
 
+  // The timings (ms; webnn/support.js track) of the WebNN models: { swapper, detector, occluder }
+  // -> { build, dispatch: { last, sum, n } }, for those running through WebNN
+  get nnPerf() {
+    const out = {};
+    for (const [k, m] of [["swapper", this.nn], ["detector", this.nnDetector], ["occluder", this.nnOccluder]]) if (m?.perf) out[k] = m.perf;
+    return out;
+  }
+
   // A WebNN context is lost as a device is (the GPU process crashing, a driver reset): told to
   // gpuOptions.onLost, unless the pipeline let go of it (destroying a context loses it too).
   watch(context) {

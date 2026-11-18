@@ -38,7 +38,7 @@ class WorkerEngine {
       else if (m.type === "frame") call.onFrame?.(m.frame);
       else {
         this.calls.delete(m.id);
-        if (m.gpu) this.gpu = m.gpu;
+        if (m.gpu) { this.gpu = m.gpu; this.onGpu?.(); }
         if (m.type === "error") {
           const err = new Error(m.message);
           err.name = m.name;

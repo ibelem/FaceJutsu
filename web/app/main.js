@@ -1309,11 +1309,44 @@ function renderSteps() {
     else if (st) sums[step] = st.phase === "wait" ? "Waiting…" : `Loading ${Math.round(100 * st.frac)}%`;
   }
   for (const s of document.querySelectorAll(".step")) {
+    if (s.dataset.step === "perf") continue; // (renderPerf's)
     const el = s.querySelector(".step-sum");
     el.textContent = sums[s.dataset.step] || "";
     el.classList.toggle("failed", !!failed[s.dataset.step]);
     el.title = failed[s.dataset.step] || "";
   }
+  renderPerf();
+}
+
+const PERF_NAMES = { swapper: "Swapper", detector: "Detector", occluder: "Mask" };
+const fmtMs = (ms) => (ms < 1000 ? `${ms.toFixed(ms < 10 ? 1 : 0)} ms` : `${(ms / 1000).toFixed(1)} s`);
+
+// The Performance step: how long each WebNN model took to build its graph, and to run one
+// dispatch through the read back of its result. Only while models run through WebNN.
+function renderPerf() {
+  const g = engine?.gpu || {};
+  const perf = ready && g.backend === "webnn" ? g.nnPerf || {} : {};
+  const keys = Object.keys(PERF_NAMES).filter((k) => perf[k]);
+  const step = $("perfStep");
+  step.hidden = !keys.length;
+  if (!keys.length) return;
+  step.querySelector(".step-sum").textContent = `WebNN ${g.webnnDevice === "npu" ? "NPU" : "GPU"}`;
+  $("perfRows").replaceChildren(...keys.map((k) => {
+    const { build, dispatch } = perf[k];
+    const row = document.createElement("div");
+    row.className = "opt-row";
+    const name = document.createElement("span");
+    name.textContent = PERF_NAMES[k];
+    const built = document.createElement("span");
+    built.className = "sw-cap";
+    built.textContent = build ? `Build ${fmtMs(build.last)}` : "";
+    if (build?.n > 1) built.title = `${build.n} graphs built, ${fmtMs(build.sum)} in all`;
+    const run = document.createElement("output");
+    run.textContent = dispatch ? `Run ${fmtMs(dispatch.last)} · avg ${fmtMs(dispatch.sum / dispatch.n)}` : "Run –";
+    if (dispatch) run.title = `${dispatch.n} dispatches`;
+    row.append(name, built, run);
+    return row;
+  }));
 }
 
 // the timeline's tracks: one per person found, or the clip's progress while faces are being found
@@ -3843,6 +3876,7 @@ async function boot() {
   seg($("enhanceSeg"), ["", ...enhancers().map((e) => e.id)].map((id) => ({ id, label: enhancerLabel(id) })), () => one("enhance"), (v) => setSegment("enhance", v));
   engine = await createEngine({ inPage: params.get("engine") === "page" });
   engine.onLost = gpuLost;
+  engine.onGpu = renderPerf;
   initPreview();
   if (models.missing.length) await welcome(models.missing, models.extras);
   else await loadModels();

@@ -20,7 +20,7 @@
 // build(B, onProgress) (a graph with inputs "target" and "source" and output "out") and
 // sourceData().
 
-import { createWebNNContext, computeType, gpuInterop } from "./support.js";
+import { createWebNNContext, computeType, gpuInterop, timed, once, track } from "./support.js";
 
 // Largest batch per dispatch (a subclass may lower it: maxBatch); pixelshuffle 4 (16 crops) runs
 // as 4 dispatches. A 16-crop inswapper graph was no faster than 4 x 4 crops with memory to spare
@@ -83,6 +83,7 @@ export class WebNNSwapper {
     m.weights = weights;
     m.st = st;
     m.context = await createWebNNContext(interop ? gpu.device : null, nnDevice);
+    m.nnDevice = nnDevice;
     m.interop = interop && gpuInterop(m.context);
     m.ct = computeType(m.context, precision);
     m.graph = null; // { B, graph, inputs, out, sourceOf }
@@ -94,7 +95,7 @@ export class WebNNSwapper {
   async ensureGraph(B, onBuild) {
     if (this.graph?.B === B) return this.graph;
     this.releaseGraph();
-    const graph = await this.build(B, onBuild);
+    const graph = await timed(this, this.modelName, `build graph (batch ${B})`, () => track(this, "build", () => this.build(B, onBuild)));
     const c = this.context;
     const crops = { dataType: "float32", shape: [B, this.size, this.size, 3] };
     const W = { writable: true };
@@ -154,8 +155,10 @@ export class WebNNSwapper {
         buf.destroy();
       } else {
         c.writeTensor(g.inputs.target, x);
-        c.dispatch(g.graph, g.inputs, { out: g.out });
-        y = new Float32Array(await c.readTensor(g.out));
+        y = await once(g, this, this.modelName, "first dispatch", async () => {
+          c.dispatch(g.graph, g.inputs, { out: g.out });
+          return new Float32Array(await c.readTensor(g.out));
+        });
       }
       if (!out) return y;
       out.set(y.subarray(0, n * per), i * per);

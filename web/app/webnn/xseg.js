@@ -16,7 +16,7 @@
 
 import * as ops from "../gpu/ops.js";
 import { ENCODER, DECODER, BLURS } from "../models/xseg.js";
-import { createWebNNContext, computeType } from "./support.js";
+import { createWebNNContext, computeType, timed, once, track } from "./support.js";
 import { floatData, fromHalf, typeOf } from "./swapper.js";
 import { destroyWeights } from "../weights.js";
 
@@ -31,6 +31,7 @@ export class WebNNXSeg {
     m.gpu = gpu;
     m.st = st;
     m.context = await createWebNNContext(null, nnDevice);
+    m.nnDevice = nnDevice;
     m.ct = computeType(m.context, precision);
     m.crop = { size: N, mul: 1 / 255, add: 0 }; // as models/xseg.js
     m.graph = null;
@@ -125,7 +126,7 @@ export class WebNNXSeg {
 
   async ensureGraph(onBuild) {
     if (this.graph) return this.graph;
-    const graph = await this.build(onBuild);
+    const graph = await timed(this, "xseg", "build graph", () => track(this, "build", () => this.build(onBuild)));
     this.graph = {
       graph,
       input: await this.context.createTensor({ dataType: this.ct, shape: [1, N, N, 3], writable: true }),
@@ -144,8 +145,11 @@ export class WebNNXSeg {
     const out = new Float32Array(B * N * N);
     for (let i = 0; i < B; i++) {
       this.context.writeTensor(g.input, crops.subarray(i * per, (i + 1) * per));
-      this.context.dispatch(g.graph, { input: g.input }, { out: g.out });
-      out.set(new Float32Array(await this.context.readTensor(g.out)), i * N * N);
+      const y = await once(g, this, "xseg", "first dispatch", async () => {
+        this.context.dispatch(g.graph, { input: g.input }, { out: g.out });
+        return new Float32Array(await this.context.readTensor(g.out));
+      });
+      out.set(y, i * N * N);
     }
     return this.gpu.fromArray(out, [B, N, N, 1]);
   }

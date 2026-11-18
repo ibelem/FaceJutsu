@@ -22,6 +22,7 @@ const CONVS = [
 
 export class WebNNInswapper extends WebNNSwapper {
   size = 128;
+  modelName = "inswapper";
   sourceShape = [12, 2048];
 
   // the graph's source input: the 12 style rows of styles() (WebGPU tensors), read back

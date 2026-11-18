@@ -9,7 +9,7 @@
 // (4.2M parameters) and kept here.
 
 import { LAYERS, convNames } from "../models/scrfd.js";
-import { createWebNNContext, computeType } from "./support.js";
+import { createWebNNContext, computeType, timed, once, track } from "./support.js";
 
 const toHalf = (f32) => new Uint16Array(new Float16Array(f32).buffer);
 const floatData = (f32, t) => (t === "float16" ? toHalf(f32) : f32);
@@ -24,6 +24,7 @@ export class WebNNSCRFD {
     if (typeof Float16Array === "undefined") throw new Error("this browser has no Float16Array");
     const m = new WebNNSCRFD();
     m.context = await createWebNNContext(null, nnDevice);
+    m.nnDevice = nnDevice;
     m.ct = computeType(m.context, precision);
     m.convs = {};
     for (const name of convNames()) {
@@ -93,7 +94,7 @@ export class WebNNSCRFD {
   async ensureGraph(size) {
     let g = this.graphs.get(size);
     if (g) return g;
-    const graph = await this.build(size);
+    const graph = await timed(this, "scrfd", `build graph (${size}px)`, () => track(this, "build", async () => this.build(size)));
     g = {
       graph,
       input: await this.context.createTensor({ dataType: this.ct, shape: [1, size, size, 3], writable: true }),
@@ -112,8 +113,10 @@ export class WebNNSCRFD {
   async forward(x, size) {
     const g = await this.ensureGraph(size);
     this.context.writeTensor(g.input, x);
-    this.context.dispatch(g.graph, { input: g.input }, g.outs);
-    return Promise.all([0, 1, 2].map(async (s) => new Float32Array(await this.context.readTensor(g.outs[`out${s}`]))));
+    return once(g, this, "scrfd", "first dispatch", async () => {
+      this.context.dispatch(g.graph, { input: g.input }, g.outs);
+      return Promise.all([0, 1, 2].map(async (s) => new Float32Array(await this.context.readTensor(g.outs[`out${s}`]))));
+    });
   }
 
   dispose() {
