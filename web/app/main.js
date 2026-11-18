@@ -1345,7 +1345,7 @@ function renderPerf() {
   // (WebGPU has no compile step of its own: its column is left out while no model has one)
   const compile = keys.some((k) => perf[k].build);
   $("perfRows").style.setProperty("--perf-cols", compile ? 3 : 2);
-  const cells = [...(compile ? [cell("Compile", "perf-head hint", PERF_TIPS.compile)] : []), cell("First run", "perf-head hint", PERF_TIPS.first), cell("Steady", "perf-head hint", PERF_TIPS.steady)];
+  const cells = [cell("", "perf-head"), ...(compile ? [cell("Compile", "perf-head hint", PERF_TIPS.compile)] : []), cell("First run", "perf-head hint", PERF_TIPS.first), cell("Steady", "perf-head hint", PERF_TIPS.steady)];
   for (const k of keys) {
     const { backend, build, dispatch: d } = perf[k];
     const on = backend === "webnn" ? `WebNN ${g.webnnDevice === "npu" ? "NPU" : "GPU"}` : "WebGPU";
